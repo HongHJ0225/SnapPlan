@@ -41,4 +41,9 @@ public class NaverOAuth2UserInfo extends OAuth2UserInfo {
 
         return (String) response.get("profile_image");
     }
+
+    @Override
+    public String getEmail() {
+        return "";
+    }
 }

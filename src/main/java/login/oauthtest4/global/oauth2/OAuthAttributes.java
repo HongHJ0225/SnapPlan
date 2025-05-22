@@ -73,12 +73,13 @@ public class OAuthAttributes {
      * OAuth2UserInfo에서 socialId(식별값), nickname, imageUrl을 가져와서 build
      * email에는 UUID로 중복 없는 랜덤 값 생성
      * role은 GUEST로 설정
+     * .email(UUID.randomUUID() + "@socialUser.com") ->
      */
     public User toEntity(SocialType socialType, OAuth2UserInfo oauth2UserInfo) {
         return User.builder()
                 .socialType(socialType)
                 .socialId(oauth2UserInfo.getId())
-                .email(UUID.randomUUID() + "@socialUser.com")
+                .email(oauth2UserInfo.getEmail())
                 .nickname(oauth2UserInfo.getNickname())
                 .imageUrl(oauth2UserInfo.getImageUrl())
                 .role(Role.GUEST)
