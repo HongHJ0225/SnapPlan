@@ -2,11 +2,14 @@ package login.oauthtest4.global.jwt.service;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import login.oauthtest4.domain.user.repository.UserRepository;
+import login.oauthtest4.global.redis.RedisService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.cache.CacheProperties.Redis;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
@@ -47,6 +50,7 @@ public class JwtService {
     private static final String BEARER = "Bearer ";
 
     private final UserRepository userRepository;
+    private final RedisService redisService;
 
     /**
      * AccessToken 생성 메소드
@@ -57,7 +61,7 @@ public class JwtService {
                 .withSubject(ACCESS_TOKEN_SUBJECT) // JWT의 Subject 지정 -> AccessToken이므로 AccessToken
                 .withExpiresAt(new Date(now.getTime() + accessTokenExpirationPeriod)) // 토큰 만료 시간 설정
 
-                //클레임으로는 저희는 email 하나만 사용합니다.
+                //클레임으로는 email 하나만 사용합니다.
                 //추가적으로 식별자나, 이름 등의 정보를 더 추가하셔도 됩니다.
                 //추가하실 경우 .withClaim(클래임 이름, 클래임 값) 으로 설정해주시면 됩니다
                 .withClaim(EMAIL_CLAIM, email)
@@ -68,11 +72,12 @@ public class JwtService {
      * RefreshToken 생성
      * RefreshToken은 Claim에 email도 넣지 않으므로 withClaim() X
      */
-    public String createRefreshToken() {
+    public String createRefreshToken(String email) {
         Date now = new Date();
         return JWT.create()
                 .withSubject(REFRESH_TOKEN_SUBJECT)
                 .withExpiresAt(new Date(now.getTime() + refreshTokenExpirationPeriod))
+                .withClaim(EMAIL_CLAIM, email)
                 .sign(Algorithm.HMAC512(secretKey));
     }
 
@@ -141,6 +146,23 @@ public class JwtService {
             return Optional.empty();
         }
     }
+    /**
+        * RefreshToken으로 새로운 AccessToken 생성
+    */
+    public String refreshAccessToken(String refreshToken, String email) {
+        if (!isTokenValid(refreshToken)) {
+            throw new IllegalArgumentException("유효하지 않은 RefreshToken입니다.");
+        }
+
+        // Redis에서 저장된 RefreshToken과 비교
+        String storedRefreshToken = redisService.getValues("RF-" + email);
+        if (!refreshToken.equals(storedRefreshToken)) {
+            throw new IllegalArgumentException("저장된 RefreshToken과 일치하지 않습니다.");
+        }
+
+        return createAccessToken(email);
+    }
+
 
     /**
      * AccessToken 헤더 설정
@@ -173,6 +195,20 @@ public class JwtService {
             return true;
         } catch (Exception e) {
             log.error("유효하지 않은 토큰입니다. {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // RefreshToken 검증
+    public boolean isRefreshTokenValid(String refreshToken) {
+        try {
+            DecodedJWT decodedJWT = JWT.require(Algorithm.HMAC512(secretKey))
+                .build()
+                .verify(refreshToken);
+
+            return REFRESH_TOKEN_SUBJECT.equals(decodedJWT.getSubject());
+        } catch (Exception e) {
+            log.error("RefreshToken 검증 실패: {}", e.getMessage());
             return false;
         }
     }
